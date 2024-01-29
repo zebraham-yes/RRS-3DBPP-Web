@@ -4,6 +4,32 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from numpy import array,random
 from pack3d.item import Item
 
+def get_item_dict(solution_dicts):
+    json_dict={}
+    for date in solution_dicts:
+        json_dict[date]={}
+        for des in solution_dicts[date]:
+            json_dict[date][des]=[]
+            
+            for packer in solution_dicts[date][des]:
+                items_list=[]
+                
+                for item in packer.best_bin.items:
+                    item_dict={}
+                    item_dict["scale"]=[round(float(i),6) for i in item.scale]
+                    if item.rotation_type==0:
+                        item_dict["position"]=[round(float(i),6) for i in item.position]
+                    else:
+                        item_dict["position"]=[round(float(i),6) for i in [item.position[1],item.position[0],item.position[2]]]
+                    item_dict["kind"]=item.kind
+                    item_dict["weight"]=float(item.weight)
+                    item_dict["item_ID"]=item.item_ID
+                    item_dict["name"]=item.name
+                    
+                    items_list.append(item_dict)
+                json_dict[date][des].append(items_list)
+    return json_dict
+
 def plot_box(ax,ori_point,vector,linewidths=1,edgecolors='black',facecolors=random.rand(3),alpha=0.5):
     a,b,c=ori_point
     x,y,z=vector

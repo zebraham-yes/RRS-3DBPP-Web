@@ -2,6 +2,8 @@
 from flask import Flask, render_template, request, session
 from flask_uploads import UploadSet, configure_uploads, DOCUMENTS
 from flask_socketio import SocketIO
+import json
+import joblib
 # from werkzeug.utils import secure_filename  # 修改这一行
 import pack3d
 import os
@@ -52,7 +54,7 @@ def table_show():
     # 读取 Excel 文件内容
     excel_data = read_excel_file(session['filename'])
     if type(excel_data)==str:
-        return "文件读取失败，请重新上传，尽可能不要刷新页面或使用后退键"
+        return f"文件读取失败，请重新上传，尽可能不要刷新页面或使用后退键{session['filename']}"
     else:
         page = int(request.args.get('page', 1))
         
@@ -74,16 +76,17 @@ def run3DBPP():
         AG=pack3d.Agent()
         bill_store=pfep.copy()
         dates=pack3d.unique(pfep["装车日期"])  # 表格中一共有几天
-        solution_dicts=[]
+        solution_dicts={}
         global_item_ID=0
         for date in dates:
             print("day:", date)
-            des_solution_dict,bill_store=AG.excute(bill_store,date,global_item_ID,socket=socketio)
-            solution_dicts.append(des_solution_dict)
-            
+            des_solution_dict,bill_store=AG.excute(bill_store,date,global_item_ID,socket=socketio,task_date=date)
+            solution_dicts[date]=des_solution_dict
+        with open(os.path.join("TempFiles","solution_dict.jb"), 'w', encoding='utf8') as json_file:
+            json.dump(pack3d.get_item_dict(solution_dicts), json_file,ensure_ascii=False)  # des_solution_dict 不能被保存为标准的json格式
             print('***************************************************************')
             
-        return "运算完成"
+        return render_template("pack_report.html")
     
 
 

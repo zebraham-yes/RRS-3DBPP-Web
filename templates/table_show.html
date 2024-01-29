@@ -28,7 +28,9 @@
 
 
     <div id="progress-container">
+        <dic id="task_date"></div>
         <div id="ori"></div>
+        <div id="ori_percent"></div>
         <div id="progress-bar">%</div>
         <div id="progress-message"></div>
 
@@ -41,9 +43,12 @@
         var socket = io.connect("http://127.0.0.1:5000");
         
         socket.on('update', function(data) {
-            
+            var progressMessage = document.getElementById('task_date');
+            progressMessage.innerText = data.task_date;
             var progressMessage = document.getElementById('ori');
             progressMessage.innerText = data.ori;
+            var progressMessage = document.getElementById('ori_percent');
+            progressMessage.innerText = data.ori_percent;
             var progressMessage = document.getElementById('progress-bar');
             progressMessage.innerText = data.progress;
             var progressMessage = document.getElementById('progress-message');

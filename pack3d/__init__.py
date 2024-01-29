@@ -2,8 +2,8 @@ from .packer import Packer
 from .bin import Bin
 from .item import Item
 # from .bill import BillGenerator
-from .plot import plot_box,plot_truck
-from .block import blocker_items,get_Shelf_info
+from .plot import plot_box,plot_truck,get_item_dict
+from .block import blocker_items
 from .excel import get_excel
 from numpy import min,unique
 from pandas import read_excel
@@ -48,16 +48,19 @@ class Agent:  # 定义智能体
 
     #     return item_sep_list
 
-    def excute(self,bills,date,global_item_ID,socket):
+    def excute(self,bills,date,global_item_ID,socket,task_date=""):
         
         ori_warehouse=unique(bills["始发仓库"])
         des_solution_dict={}
+        num_of_ori=str(len(ori_warehouse))  # 一共有几个要发往的地点
+        ori_count=0
         
         for ori in ori_warehouse:
+            ori_count+=1
             print("————————来自 %s 的货物 开始————————\n"%ori)            
             des_bills=bills.loc[bills["始发仓库"]==ori]   # 提取发往一个地区的订单信息
             must_item_table=self.get_must(des_bills,date).sample(frac=1)  # 获取当日需要发的订单，并进行打乱
-# get_must(bills.loc[bills["始发仓库"]==ori],date).sample(frac=1)
+            # get_must(bills.loc[bills["始发仓库"]==ori],date).sample(frac=1)
             if len(must_item_table)==0:  # 没有要发的货
                 continue
             
@@ -124,7 +127,7 @@ class Agent:  # 定义智能体
                 W_ratio=round(batch_packer.bins[0].get_weight_ratio(),4)
                 msg=f"迭代装箱后,   V_ratio: {V_ratio},  W_ratio: {W_ratio}"
                 print(msg,end=" ")
-                socket.emit('update', {'ori':ori,'progress': str(round((1-len(must_items)/total_length)*100,1))+"%", 'message': msg})  # 向socket专属进度情况
+                socket.emit('update', {'task_date':task_date,'ori_percent':str(ori_count)+"/"+num_of_ori,'ori':ori,'progress': str(round((1-len(must_items)/total_length)*100,1))+"%", 'message': msg})  # 向socket专属进度情况
                 print("装入货物总数：",len(batch_packer.bins[0].items),"剩余货物总数：",len(must_items),end="\n")
                 self.des_packers.append(batch_packer)
             
@@ -150,8 +153,8 @@ class Agent:  # 定义智能体
             
             bin=self.smaller_packer.best_bin
             print("最终装箱：放入",len(bin.items),"，未放入",len(bin.unfitted_items),end=" ")  # 只有这俩变量是靠谱的：装进去的，没装进去的
-            print("最终装箱后   V_ratio: ",round(bin.get_filling_ratio(),4)," W_ratio: ",round(bin.get_weight_ratio(),4),end=" ")
-            print("装入货物总数：",len(bin.items),"剩余货物总数：",len(bin.unfitted_items),end="\n")
+            print("最终装箱后   V_ratio: ",round(bin.get_filling_ratio(),4)," W_ratio: ",round(bin.get_weight_ratio(),4))
+            # print("装入货物总数：",len(bin.items),"剩余货物总数：",len(bin.unfitted_items),end="\n")
             
             # print(self.smaller_packer.max_items_got, num_of_items)
             if self.smaller_packer.max_items_got == num_of_items:  # 如果全装进去了
