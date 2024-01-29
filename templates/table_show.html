@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>上传成功</title>
+</head>
+<body>
+    <div class="container mt-5">
+        <h2>数据展示</h2>
+        <!-- 将 DataFrame 的 HTML 表格插入到页面中 -->
+        {{ table|safe }}
+        
+        <form action="{{ url_for('run3DBPP') }}" method="post">
+            <button type="submit">运行装箱算法</button>
+        </form>
+
+        <!-- 分页 -->
+        <nav aria-label="Page navigation example">
+            <ul class="pagination">
+                {% for page_num in range(1, total_pages + 1) %}
+                    <a class="page-link" href="{{ url_for('table_show', page=page_num) }}">{{ page_num }}</a>
+                    &nbsp
+                {% endfor %}
+            </ul>
+        </nav>
+    </div>
+
+
+    <div id="progress-container">
+        <div id="ori"></div>
+        <div id="progress-bar">%</div>
+        <div id="progress-message"></div>
+
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js"></script>
+    
+    <!--目前为止似乎进度条是不好用的-->
+    <script>
+        var socket = io.connect("http://127.0.0.1:5000");
+        
+        socket.on('update', function(data) {
+            
+            var progressMessage = document.getElementById('ori');
+            progressMessage.innerText = data.ori;
+            var progressMessage = document.getElementById('progress-bar');
+            progressMessage.innerText = data.progress;
+            var progressMessage = document.getElementById('progress-message');
+            progressMessage.innerText = data.message;
+        });
+    </script>
+
+</body>
+</html>
