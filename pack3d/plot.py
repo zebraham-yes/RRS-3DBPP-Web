@@ -16,11 +16,11 @@ def get_item_dict(solution_dicts):
                 
                 for item in packer.best_bin.items:
                     item_dict={}
-                    item_dict["scale"]=[round(float(i),6) for i in item.scale]
                     if item.rotation_type==0:
-                        item_dict["position"]=[round(float(i),6) for i in item.position]
+                        item_dict["scale"]=[round(float(i),6) for i in item.scale]
                     else:
-                        item_dict["position"]=[round(float(i),6) for i in [item.position[1],item.position[0],item.position[2]]]
+                        item_dict["scale"]=[round(float(i),6) for i in [item.scale[1],item.scale[0],item.scale[2]]]
+                    item_dict["position"]=[round(float(i),6) for i in item.position]
                     item_dict["kind"]=item.kind
                     item_dict["weight"]=float(item.weight)
                     item_dict["item_ID"]=item.item_ID

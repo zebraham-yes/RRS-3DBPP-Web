@@ -82,11 +82,13 @@ def run3DBPP():
             print("day:", date)
             des_solution_dict,bill_store=AG.excute(bill_store,date,global_item_ID,socket=socketio,task_date=date)
             solution_dicts[date]=des_solution_dict
-        with open(os.path.join("TempFiles","solution_dict.jb"), 'w', encoding='utf8') as json_file:
-            json.dump(pack3d.get_item_dict(solution_dicts), json_file,ensure_ascii=False)  # des_solution_dict 不能被保存为标准的json格式
-            print('***************************************************************')
+        
+        item_dict=pack3d.get_item_dict(solution_dicts)
+        with open(os.path.join("TempFiles",session['filename'].split(".")[0]+"solution_dict.json"), 'w', encoding='utf8') as json_file:
+            json.dump(item_dict, json_file,ensure_ascii=False)  # des_solution_dict 不能被保存为标准的json格式
+            print('*****************************整体结束**********************************')
             
-        return render_template("pack_report.html")
+        return render_template('complete.html')
     
 
 
@@ -94,6 +96,17 @@ def run3DBPP():
 def handle_connect():
     print('Client connected')
 
+@app.route("/pack_report",methods=["GET","POST"])
+def pack_report():
+    with open(os.path.join("TempFiles",session['filename'].split(".")[0]+'solution_dict.json'), 'r',encoding="utf8") as json_file:
+        item_dict = json.load(json_file)
+    
+    # 设置一些默认请求参数，保证第一次不报错
+    date=request.args.get('date', list(item_dict.keys())[0])
+    ori=request.args.get('ori', list(item_dict[date].keys())[0])
+    packer_index=int(request.args.get('packer_index', 0))
+    
+    return render_template('pack_report.html', item_dict=item_dict,date=date,ori=ori,packer_index=packer_index)  # 将数据传递给模板
 
 if __name__ == "__main__":
     app.run(debug=True)

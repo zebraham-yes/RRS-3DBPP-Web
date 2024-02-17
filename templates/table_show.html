@@ -11,9 +11,6 @@
         <!-- 将 DataFrame 的 HTML 表格插入到页面中 -->
         {{ table|safe }}
         
-        <form action="{{ url_for('run3DBPP') }}" method="post">
-            <button type="submit">运行装箱算法</button>
-        </form>
 
         <!-- 分页 -->
         <nav aria-label="Page navigation example">
@@ -26,7 +23,11 @@
         </nav>
     </div>
 
-
+    
+    <form action="{{ url_for('run3DBPP') }}" method="post">
+        <button type="submit">运行装箱算法</button>
+    </form>
+    
     <div id="progress-container">
         <dic id="task_date"></div>
         <div id="ori"></div>

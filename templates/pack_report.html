@@ -1,12 +1,177 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>结果展示</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="{{ url_for('static', filename='three.js') }}"></script>
+  <title>结果展示</title>
+  <style>
+    body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+    }
+
+    .left-column {
+        flex: 1;
+        background-color: #f0f0f0;
+        padding: 20px;
+    }
+
+    .right-column {
+        flex: 1;
+        background-color: #e0e0e0;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;  /* 设置为纵向排列 */
+    }
+
+    #three-container {
+        flex: 1;  /* 填充剩余空间 */
+    }
+</style>
+
 </head>
 <body>
 
+  <div class="left-column">
+    <h2>日期</h2>
+    <nav aria-label="Page navigation date">
+        <ul class="pagination">
+            {% for date in item_dict %}
+                <a class="page-link" href="{{ url_for('pack_report', date=date) }}">{{ date }}</a>
+                &nbsp
+            {% endfor %}
+        </ul>
+    </nav>
 
+    <h2>始发仓</h2>
+    <nav aria-label="Page navigation ori">
+        <ul class="pagination">
+            {% for ori in item_dict[date] %}
+                <a class="page-link" href="{{ url_for('pack_report', date=date,ori=ori) }}">{{ ori }}</a>
+                &nbsp
+            {% endfor %}
+        </ul>
+    </nav>
+
+    <h2>车辆</h2>
+    <nav aria-label="Page navigation packer">
+        <ul class="pagination">
+            {% for packer_index in range(item_dict[date][ori] | length ) %}
+                <a class="page-link" href="{{ url_for('pack_report', date=date,ori=ori,packer_index=packer_index) }}">{{ packer_index }}</a>
+                &nbsp
+            {% endfor %}
+        </ul>
+    </nav>
+  </div>
+
+  <div class="right-column">
+    <h2>三维展示</h2>
+    <div id="three-container"></div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'https://threejsfundamentals.org/threejs/resources/threejs/r127/build/three.module.js';
+    import { OrbitControls } from 'https://threejsfundamentals.org/threejs/resources/threejs/r127/examples/jsm/controls/OrbitControls.js';
+
+    // Your JSON data with cube information
+    const cubesData = {{ item_dict[date][ori][packer_index] | tojson | safe }};
+    // const cubesData = [{"scale": [1.2, 1.0, 0.99], "position": [0.0, 0.0, 0.0]},{"scale": [2.0, 1.5, 1.0], "position": [1.0, 1.0, 1.0]},];
+  // 其他 cube 数据...
+
+  function set_corner_position(mesh, cornerPosition) {
+    // 获取几何体的一半尺寸
+    const halfWidth = mesh.geometry.parameters.width / 2;
+    const halfHeight = mesh.geometry.parameters.height / 2;
+    const halfDepth = mesh.geometry.parameters.depth / 2;
+
+    // 设置物体的中心点坐标
+    mesh.position.copy(cornerPosition);
+
+    // 调整中心点以匹配角点坐标
+    mesh.position.x += halfWidth;
+    mesh.position.y += halfHeight;
+    mesh.position.z += halfDepth;
+}
+
+    init();
+
+    function init() {
+        const scene = new THREE.Scene();
+        const ra = 70
+        const camera = new THREE.OrthographicCamera(
+            window.innerWidth / -ra, window.innerWidth / ra,
+            window.innerHeight / ra, window.innerHeight / -ra,
+            -15, 1000
+        );
+
+        // 创建渲染器
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth/2.5, 400);
+        document.body.appendChild(renderer.domElement);
+        document.getElementById('three-container').appendChild(renderer.domElement);
+        const controls = new OrbitControls(camera, renderer.domElement);
+
+        // Create cubes based on JSON data
+        cubesData.forEach(cubeData => {
+            const scale = new THREE.Vector3().fromArray(cubeData.scale);
+            //const geometry = new THREE.BoxGeometry(scale.y, scale.z, scale.x);
+            const geometry = new THREE.BoxGeometry(scale.x, scale.z, scale.y);
+
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+
+            const cube = new THREE.Mesh(geometry, material);
+            const position = new THREE.Vector3().fromArray([cubeData.position[0],cubeData.position[2],cubeData.position[1]]);
+            //const position = new THREE.Vector3().fromArray(cubeData.position)
+            set_corner_position(cube,position);
+
+            scene.add(cube);
+            // Create wireframe geometry for edges
+            const edges = new THREE.EdgesGeometry(geometry);
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+            
+            // Create the edges mesh and add it to the scene
+            const wireframe = new THREE.LineSegments(edges, lineMaterial);
+            cube.add(wireframe);
+        });
+
+        // Add a semi-transparent cube
+        const transparentGeometry = new THREE.BoxGeometry(17.5,3.5,3);   // 暂时都是大车，但是之后是要改的
+        const transparentMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.7 });
+        const truck = new THREE.Mesh(transparentGeometry, transparentMaterial);
+        const truck_position = new THREE.Vector3().fromArray([0,0,0]);
+        set_corner_position(truck,truck_position)
+        scene.add(truck);
+
+        // Add coordinate axes with scales
+        const axesHelper = new THREE.AxesHelper(10);
+        scene.add(axesHelper);
+
+        // 设置初始相机位置和控制器目标
+        camera.position.set(10, 3, 3);
+        controls.target.set(8, 1, 0);
+
+        const animate = function () {
+            requestAnimationFrame(animate);
+
+            // Add any animation logic here if needed
+
+            renderer.render(scene, camera);
+        };
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            const newWidth = window.innerWidth;
+            const newHeight = window.innerHeight;
+
+            camera.aspect = newWidth / newHeight;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(newWidth, newHeight);
+        });
+    }
+</script>
 </body>
 </html>
