@@ -6,6 +6,7 @@
     <title>Excel 文件上传</title>
 </head>
 <body>
+    <h1>北京大学启联队 日日顺智能拼载项目</h1>
     <form method="POST" enctype="multipart/form-data">
         <input type="file" name="file" />
         <button type="submit">上传 Excel 文件</button>
@@ -13,10 +14,12 @@
     <br>
     
     <h3>{{msg}}</h3>
-
+    
     <br>
     <form action="{{ url_for('table_show') }}" method="post">
         <button type="submit">解码文件</button>
     </form>
+    <br>
+    <a href="/download">如果您需要装车文件的模板，请单击下载</a>
 </body>
 </html>

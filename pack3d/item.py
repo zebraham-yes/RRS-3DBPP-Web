@@ -1,4 +1,5 @@
 from decimal import Decimal
+from numpy.random import randint
 
 DEFAULT_NUMBER_OF_DECIMALS = 3
 START_POSITION = [0, 0, 0]
@@ -38,7 +39,7 @@ class RotationType:
 
 
 class Item:
-    def __init__(self, name, length, width, height, weight,kind="",item_ID=""):
+    def __init__(self, name, length, width, height, weight,kind="",item_ID="",color=[randint(255) for i in range(3)]):
         self.name = str(name) # 这个就是item的编号，可以用来验证两个item是否是同一个
         self.item_ID=item_ID
         self.length = length
@@ -52,6 +53,7 @@ class Item:
         self.number_of_decimals = DEFAULT_NUMBER_OF_DECIMALS
         self.v=self.get_volume()
         self.s=self.width*self.length
+        self.color=color
     
     def format_numbers(self, number_of_decimals):
         self.length = set_to_decimal(self.length, number_of_decimals)
@@ -108,7 +110,7 @@ class Item:
     
     
 class Block(Item):
-    def __init__(self, name,parent_items,kind="",item_ID=""):
+    def __init__(self, name,parent_items,kind="",item_ID="",color=[randint(255) for i in range(3)]):
         self.name = str(name) # 名起为“B”+global_item_ID
         self.item_ID=item_ID
         for item in parent_items:

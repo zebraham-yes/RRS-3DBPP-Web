@@ -4,6 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>上传成功</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px; /* 设置内边距 */
+            text-align: center; /* 可选：居中文本 */
+        }
+    </style>
 </head>
 <body>
     <div class="container mt-5">
@@ -29,10 +41,10 @@
     </form>
     
     <div id="progress-container">
-        <dic id="task_date"></div>
-        <div id="ori"></div>
-        <div id="ori_percent"></div>
-        <div id="progress-bar">%</div>
+        当前日：<dic id="task_date"></div>
+        当前仓：<div id="ori"></div>
+        当日进度：<div id="ori_percent"></div>
+        该仓进度：<div id="progress-bar">%</div>
         <div id="progress-message"></div>
 
     </div>
@@ -41,7 +53,7 @@
     
     <!--目前为止似乎进度条是不好用的-->
     <script>
-        var socket = io.connect("http://127.0.0.1:5000");
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
         
         socket.on('update', function(data) {
             var progressMessage = document.getElementById('task_date');
@@ -54,6 +66,18 @@
             progressMessage.innerText = data.progress;
             var progressMessage = document.getElementById('progress-message');
             progressMessage.innerText = data.message;
+        });
+    </script>
+
+    <button id="提前终止">Stop Computation</button>
+
+    <script>
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
+
+        // 监听按钮点击事件
+        document.getElementById('提前终止').addEventListener('click', function () {
+            // 通过 WebSocket 发送停止请求
+            socket.emit('stop_request');
         });
     </script>
 

@@ -1,9 +1,9 @@
 # 在 Flask 应用中导入 secure_filename
 from flask import Flask, render_template, request, session
+from werkzeug.utils import send_file
 from flask_uploads import UploadSet, configure_uploads, DOCUMENTS
 from flask_socketio import SocketIO
 import json
-import joblib
 # from werkzeug.utils import secure_filename  # 修改这一行
 import pack3d
 import os
@@ -36,6 +36,12 @@ def upload_excel():
         
     return render_template("index.html",msg="")
 
+@app.route('/download')
+def download_file():
+    # 请替换为你实际的文件路径
+    file_path = 'static/PFEP.xlsx'
+    return send_file(file_path, as_attachment=True,environ=request.environ)
+
 def read_excel_file(file_path):
     # 通过 pandas 读取 Excel 文件
     try:
@@ -66,6 +72,10 @@ def table_show():
         table_html = excel_data.iloc[start_idx:end_idx].to_html(classes='table table-striped', index=False)
         return render_template("table_show.html",table=table_html, page=page, total_pages=(len(excel_data) // rows_per_page) + 1)
 
+from threading import Thread, Event
+stop_event = Event()
+
+
 @app.route("/run3DBPP",methods=["GET","POST"])
 def run3DBPP():
     # global filename
@@ -74,16 +84,14 @@ def run3DBPP():
         return "文件读取失败，请重新上传，尽可能不要刷新页面或使用后退键"
     else:
         AG=pack3d.Agent()
-        bill_store=pfep.copy()
-        dates=pack3d.unique(pfep["装车日期"])  # 表格中一共有几天
-        solution_dicts={}
         global_item_ID=0
-        for date in dates:
-            print("day:", date)
-            des_solution_dict,bill_store=AG.excute(bill_store,date,global_item_ID,socket=socketio,task_date=date)
-            solution_dicts[date]=des_solution_dict
+        agent_thread=pack3d.Agent_Thread(agent=AG,orders=pfep.copy(),global_item_ID=global_item_ID,socket=socketio,stop_event=stop_event)
+        agent_thread.start()
+        agent_thread.join()  # 等待前面的thread执行完毕（如果没有这一行，代码会直接执行下去导致date_solution_dict尚未更新就保存json了）
         
-        item_dict=pack3d.get_item_dict(solution_dicts)
+        # 检测z=0错误
+        item_dict=pack3d.get_item_dict(agent_thread.date_solution_dict)
+                    
         with open(os.path.join("TempFiles",session['filename'].split(".")[0]+"solution_dict.json"), 'w', encoding='utf8') as json_file:
             json.dump(item_dict, json_file,ensure_ascii=False)  # des_solution_dict 不能被保存为标准的json格式
             print('*****************************整体结束**********************************')
@@ -95,6 +103,14 @@ def run3DBPP():
 @socketio.on('connect')
 def handle_connect():
     print('Client connected')
+    
+@socketio.on('stop_request')
+def handle_disconnect_request():
+    # 在这里处理用户关闭页面的请求，停止计算任务
+    print("User requested disconnect")
+    # 设置 Event，通知线程停止计算任务
+    stop_event.set()
+    return "Task stopped"
 
 @app.route("/pack_report",methods=["GET","POST"])
 def pack_report():

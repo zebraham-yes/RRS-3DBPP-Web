@@ -2,7 +2,11 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 # from mpl_toolkits.mplot3d import axes3d
 from numpy import array,random
-from pack3d.item import Item
+from pack3d.item import Item,Block
+
+
+def float_round_6(x):
+    return round(float(x),6)
 
 def get_item_dict(solution_dicts):
     json_dict={}
@@ -12,23 +16,66 @@ def get_item_dict(solution_dicts):
             json_dict[date][des]=[]
             
             for packer in solution_dicts[date][des]:
-                items_list=[]
+                truck_dict={}  # 新增车辆信息字典
+                items_list=[]  # 原来每辆车是一个列表，现在是一个字典
                 
                 for item in packer.best_bin.items:
-                    item_dict={}
-                    if item.rotation_type==0:
-                        item_dict["scale"]=[round(float(i),6) for i in item.scale]
-                    else:
-                        item_dict["scale"]=[round(float(i),6) for i in [item.scale[1],item.scale[0],item.scale[2]]]
-                    item_dict["position"]=[round(float(i),6) for i in item.position]
-                    item_dict["kind"]=item.kind
-                    item_dict["weight"]=float(item.weight)
-                    item_dict["item_ID"]=item.item_ID
-                    item_dict["name"]=item.name
                     
-                    items_list.append(item_dict)
-                json_dict[date][des].append(items_list)
+                    # 未来在这里应该区分item和block，并对block进行拆分，在录入信息的时候直接录入item的信息
+                    if type(item)==Item:
+                        item_dict={}   # 是一个货物的信息
+                        if item.rotation_type==0:
+                            item_dict["scale"]=[float_round_6(i) for i in item.scale]
+                        else:
+                            item_dict["scale"]=[float_round_6(i) for i in [float_round_6(item.scale[1]),float_round_6(item.scale[0]),float_round_6(item.scale[2])]]
+                        item_dict["position"]=[float_round_6(i) for i in item.position]
+                        item_dict["kind"]=item.kind
+                        item_dict["weight"]=float_round_6(item.weight)
+                        item_dict["item_ID"]=item.item_ID
+                        item_dict["name"]=item.name
+                        item_dict["color"]="rgb("+str(item.color[0])+","+str(item.color[1])+","+str(item.color[2])+")"
+                        items_list.append(item_dict)
+                        
+                    elif type(item)==Block:
+                        if item.rotation_type==0:
+                            z_position=0
+                            for parent_item in item.parent_items:
+                                item_dict={}
+                                item_dict["scale"]=[float_round_6(i) for i in [parent_item.length,parent_item.width,parent_item.height]]
+                                item_dict["position"]=[float_round_6(item.position[0]),float_round_6(item.position[1]),z_position]
+                                item_dict["kind"]=parent_item.kind
+                                item_dict["weight"]=float_round_6(parent_item.weight)
+                                item_dict["item_ID"]=parent_item.item_ID
+                                item_dict["name"]=parent_item.name
+                                item_dict["color"]="rgb("+str(parent_item.color[0])+","+str(parent_item.color[1])+","+str(parent_item.color[2])+")"
+                                items_list.append(item_dict)
+                                z_position+=float_round_6(parent_item.height)
+                        else:  # 旋转了90°
+                            z_position=0
+                            for parent_item in item.parent_items:
+                                item_dict={}
+                                item_dict["scale"]=[float_round_6(i) for i in [parent_item.width,parent_item.length,parent_item.height]]
+                                item_dict["position"]=[float_round_6(item.position[0]),float_round_6(item.position[1]),z_position]
+                                item_dict["kind"]=parent_item.kind
+                                item_dict["weight"]=float_round_6(parent_item.weight)
+                                item_dict["item_ID"]=parent_item.item_ID
+                                item_dict["name"]=parent_item.name
+                                item_dict["color"]="rgb("+str(parent_item.color[0])+","+str(parent_item.color[1])+","+str(parent_item.color[2])+")"
+                                items_list.append(item_dict)
+                                z_position+=float_round_6(parent_item.height)
+                    else:
+                        print("error")
+                    
+                    truck_dict["items_list"]=items_list
+                    truck_dict["truck_scale"]=[float_round_6(i) for i in packer.best_bin.scale]
+                    truck_dict["v_ratio"]=round(float(packer.best_bin.get_filling_ratio()),5)
+                    truck_dict["w_ratio"]=round(float(packer.best_bin.get_weight_ratio()),5)
+                    
+                json_dict[date][des].append(truck_dict)
     return json_dict
+
+
+
 
 def plot_box(ax,ori_point,vector,linewidths=1,edgecolors='black',facecolors=random.rand(3),alpha=0.5):
     a,b,c=ori_point

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="{{ url_for('static', filename='three.js') }}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <title>结果展示</title>
   <style>
     body {
@@ -18,6 +19,19 @@
         padding: 20px;
     }
 
+    .middle-column {
+        flex: 1;
+        background-color: #d0d0f0;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        flex-direction: column;
+        justify-content: upper;
+    }
+
+    canvas {
+        border: 1px solid #000;
+    }
     .right-column {
         flex: 1;
         background-color: #e0e0e0;
@@ -25,6 +39,8 @@
         display: flex;
         flex-direction: column;  /* 设置为纵向排列 */
     }
+
+
 
     #three-container {
         flex: 1;  /* 填充剩余空间 */
@@ -57,13 +73,37 @@
 
     <h2>车辆</h2>
     <nav aria-label="Page navigation packer">
-        <ul class="pagination">
-            {% for packer_index in range(item_dict[date][ori] | length ) %}
-                <a class="page-link" href="{{ url_for('pack_report', date=date,ori=ori,packer_index=packer_index) }}">{{ packer_index }}</a>
-                &nbsp
-            {% endfor %}
-        </ul>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>车辆编号</th>
+                    <th>体积装载率</th>
+                    <th>重量装载率</th>
+                    <th>车长</th>
+
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for packer_index in range(item_dict[date][ori] | length ) %}
+                <tr>
+                    <td><a class="page-link" href="{{ url_for('pack_report', date=date,ori=ori,packer_index=packer_index) }}">{{ packer_index+1 }}</a></td>
+
+                <td>{{ item_dict[date][ori][packer_index]["v_ratio"]}}</td>
+                <td>{{ item_dict[date][ori][packer_index]["w_ratio"]}}</td>
+                <td>{{ item_dict[date][ori][packer_index]["truck_scale"][0]}}</td>
+
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </nav>
+  </div>
+
+  <div class="middle-column">
+    <h2>该日该仓数据</h2>
+    <br>
+    <canvas id="scatterPlot" width="100" height="100"></canvas>
   </div>
 
   <div class="right-column">
@@ -72,13 +112,62 @@
   </div>
 
   <script type="module">
+    const ori_dict = {{ item_dict[date][ori] | tojson | safe }};
+    // 获取 Canvas 元素和 2D 上下文
+var canvas = document.getElementById('scatterPlot');
+var ctx = canvas.getContext('2d');
+
+// 提取 v_ratio 和 w_ratio 属性，生成数据数组
+var data = ori_dict.map(item => ({ x: item.v_ratio, y: item.w_ratio }));
+
+// 创建散点图
+var scatterChart = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+        datasets: [{
+            label: 'Scatter Plot',
+            data: data,
+            backgroundColor: 'blue', // 散点颜色
+        }]
+    },
+    options: {
+        scales: {
+            x: {
+                type: 'linear',
+                position: 'bottom',
+                title: {
+                    display: true,
+                    text: 'v_ratio'
+                },
+                suggestedMin:0,
+                suggestedMax:0
+            },
+            y: {
+                type: 'linear',
+                position: 'left',
+                title: {
+                    display: true,
+                    text: 'w_ratio'
+                },
+                suggestedMin:0,
+                suggestedMax:0
+                
+            }
+        }
+    }
+});
+  </script>
+
+
+
+  <script type="module">
     import * as THREE from 'https://threejsfundamentals.org/threejs/resources/threejs/r127/build/three.module.js';
     import { OrbitControls } from 'https://threejsfundamentals.org/threejs/resources/threejs/r127/examples/jsm/controls/OrbitControls.js';
 
     // Your JSON data with cube information
-    const cubesData = {{ item_dict[date][ori][packer_index] | tojson | safe }};
+    const cubesData = {{ item_dict[date][ori][packer_index]["items_list"] | tojson | safe }};
     // const cubesData = [{"scale": [1.2, 1.0, 0.99], "position": [0.0, 0.0, 0.0]},{"scale": [2.0, 1.5, 1.0], "position": [1.0, 1.0, 1.0]},];
-  // 其他 cube 数据...
+    const truckScale = {{ item_dict[date][ori][packer_index]["truck_scale"] | tojson | safe }}
 
   function set_corner_position(mesh, cornerPosition) {
     // 获取几何体的一半尺寸
@@ -113,15 +202,25 @@
         document.getElementById('three-container').appendChild(renderer.domElement);
         const controls = new OrbitControls(camera, renderer.domElement);
 
+        // Add a semi-transparent cube
+        const transparentGeometry = new THREE.BoxGeometry(truckScale[0],truckScale[2],truckScale[1]);   // 支持不同车型
+        const transparentMaterial = new THREE.MeshBasicMaterial({ color: "rgb(170,190,180)", transparent: true, opacity: 0.5 });
+        var truck = new THREE.Mesh(transparentGeometry, transparentMaterial);
+        truck.userData.isCargo = false  // 设置一个属性
+        const truck_position = new THREE.Vector3().fromArray([0,0,0]);
+        set_corner_position(truck,truck_position)
+        scene.add(truck);
+
         // Create cubes based on JSON data
         cubesData.forEach(cubeData => {
             const scale = new THREE.Vector3().fromArray(cubeData.scale);
             //const geometry = new THREE.BoxGeometry(scale.y, scale.z, scale.x);
             const geometry = new THREE.BoxGeometry(scale.x, scale.z, scale.y);
 
-            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const material = new THREE.MeshBasicMaterial({ color: cubeData.color });
 
-            const cube = new THREE.Mesh(geometry, material);
+            var cube = new THREE.Mesh(geometry, material);
+            cube.userData.isCargo = true;
             const position = new THREE.Vector3().fromArray([cubeData.position[0],cubeData.position[2],cubeData.position[1]]);
             //const position = new THREE.Vector3().fromArray(cubeData.position)
             set_corner_position(cube,position);
@@ -136,21 +235,20 @@
             cube.add(wireframe);
         });
 
-        // Add a semi-transparent cube
-        const transparentGeometry = new THREE.BoxGeometry(17.5,3.5,3);   // 暂时都是大车，但是之后是要改的
-        const transparentMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.7 });
-        const truck = new THREE.Mesh(transparentGeometry, transparentMaterial);
-        const truck_position = new THREE.Vector3().fromArray([0,0,0]);
-        set_corner_position(truck,truck_position)
-        scene.add(truck);
+        
 
         // Add coordinate axes with scales
-        const axesHelper = new THREE.AxesHelper(10);
+        var axesHelper = new THREE.AxesHelper(10);
+        axesHelper.userData.isCargo = false
         scene.add(axesHelper);
 
         // 设置初始相机位置和控制器目标
         camera.position.set(10, 3, 3);
         controls.target.set(8, 1, 0);
+
+        // var raycaster = new THREE.Raycaster();
+        // raycaster.recursive = true; // Set recursive property to true
+        // var mouse = new THREE.Vector2();
 
         const animate = function () {
             requestAnimationFrame(animate);
