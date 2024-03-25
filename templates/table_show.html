@@ -36,11 +36,62 @@
         </nav>
     </div>
 
+    <button id="startTaskBtn">开始任务</button>
+    <!-- 任务状态显示 -->
+    <div id="taskStatus">任务尚未开始</div>
+
+    <script>
+        $(document).ready(function(){
+            $("#startTaskBtn").click(function(){
+                $.ajax({
+                    type: "POST",
+                    url: "/run3DBPP",
+                    // 根据需要发送任何数据，比如表单数据
+                    // data: { key: "value" },
+                    success: function(response){
+                        var taskId = response.task_id;
+                        console.log("任务ID: " + taskId);
+                        // 在这里调用检查任务状态的函数，传入任务ID
+                        checkTaskStatus(taskId);
+                        $("#taskStatus").text("任务已开始，正在处理中...");
+                    },
+                    error: function(error){
+                        console.log("错误: ", error);
+                        $("#taskStatus").text("启动任务时发生错误。");
+                        
+                    }
+                });
+            });
+        });
+        
+    </script>
     
-    <form action="{{ url_for('run3DBPP') }}" method="post">
-        <button type="submit" id="start_button">运行装箱算法</button>
-    </form>
-    
+    <script>
+        function checkTaskStatus(taskId) {
+            fetch(`/task/${taskId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'completed') {
+                    // 任务完成时弹出提示框
+                    alert("任务完成！");
+                    // 用户点击确定后跳转到新的页面
+                    window.location.href = '/pack_report'; // 将'/nextPage'替换为您的目标页面的路由
+                } else if (data.status === 'pending') {
+                    console.log("任务正在进行中...");
+                    setTimeout(() => checkTaskStatus(taskId), 1000); // 1秒后再次检查
+                } else {
+                    // 任务失败或找不到任务
+                    console.log(data);
+                    alert("任务失败或找不到任务");
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+        
+        // 传入任务ID开始检查任务状态，假设taskID是从某处获取的
+        // checkTaskStatus(taskID);
+    </script>
+
     <div id="data_display" style="width: 1000px; height: 200px; border: 1px solid #ccc; overflow: auto; padding: 10px;"></div> <!-- 数据显示区域 -->
     <script type="text/javascript">
         $(document).ready(function() {
@@ -70,7 +121,7 @@
         });
     </script>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js"></script>
+
     <button id="提前终止">Stop Computation</button>
 
     <script>

@@ -1,13 +1,14 @@
 # 在 Flask 应用中导入 secure_filename
-from flask import Flask, render_template, request, session,jsonify
+from flask import Flask, render_template, request, jsonify, session, copy_current_request_context
 from werkzeug.utils import send_file
 from flask_uploads import UploadSet, configure_uploads, DOCUMENTS
-from flask_socketio import SocketIO
+# from flask_socketio import SocketIO
 import json
 import time
 # from werkzeug.utils import secure_filename  # 修改这一行
 import pack3d
 import os
+import threading, queue, uuid
 
 app = Flask(__name__)
 
@@ -53,7 +54,7 @@ def read_excel_file(file_path):
         
         return excel_data  # 返回数据，可以根据需要处理
     except Exception as e:
-        return f"文件读取失败：{str(e)}"
+        return f"文件读取失败：{str(e)} ，请重新上传，尽可能不要刷新页面或使用后退键"
 
 # 每页显示的行数
 rows_per_page = 5
@@ -64,7 +65,7 @@ def table_show():
     stop_queue = Queue()
     excel_data = read_excel_file(session['filename'])
     if type(excel_data)==str:
-        return f"文件读取失败，请重新上传，尽可能不要刷新页面或使用后退键{session['filename']}"
+        return f"文件读取失败：{session['filename']}"
     else:
         page = int(request.args.get('page', 1))
         
@@ -75,9 +76,6 @@ def table_show():
         # 切片获取需要显示的数据
         table_html = excel_data.iloc[start_idx:end_idx].to_html(classes='table table-striped', index=False)
         return render_template("table_show.html",table=table_html, page=page, total_pages=(len(excel_data) // rows_per_page) + 1)
-
-from threading import Thread, Event
-# stop_event = Event()
 
 # 启动进程的标志路由
 @app.route('/start_process', methods=['POST'])
@@ -99,29 +97,80 @@ def poll():
     while True:
         if not stop_queue.empty():
             return jsonify({'status': 'interrupted'})
-        time.sleep(1)
-
-@app.route("/run3DBPP",methods=["GET","POST"])
-def run3DBPP():
-    # global filename
-    pfep=read_excel_file(session['filename'])
-    if type(pfep)==str:
-        return "文件读取失败，请重新上传，尽可能不要刷新页面或使用后退键"
-    else:
-        AG=pack3d.Agent(stop_queue)   # stop_queue用于在agent内部控制终止
-        global_item_ID=0
-        agent_thread=pack3d.Agent_Thread(agent=AG,orders=pfep.copy(),global_item_ID=global_item_ID,data_queue=data_queue,stop_queue=stop_queue)   # 在进程内部控制终止
-        agent_thread.start()
-        agent_thread.join()  # 等待前面的thread执行完毕（如果没有这一行，代码会直接执行下去导致date_solution_dict尚未更新就保存json了）
+        time.sleep(0.3)
         
-        # 检测z=0错误
-        item_dict=pack3d.get_item_dict(agent_thread.date_solution_dict)
-                    
-        with open(os.path.join("TempFiles",session['filename'].split(".")[0]+"solution_dict.json"), 'w', encoding='utf8') as json_file:
-            json.dump(item_dict, json_file,ensure_ascii=False)  # des_solution_dict 不能被保存为标准的json格式
-            print('*****************************整体结束**********************************')
+# 用于存储任务状态的全局字典
+tasks = {}
+@app.route("/task/<task_id>", methods=["GET"])  # 通过网址可以传参，作为函数的参数
+def get_task_status(task_id):
+    task = tasks.get(task_id, None)
+    if task is None:
+        return jsonify({"status": "not found"}), 404
+    else:
+        return jsonify(task)
+
+@app.route("/run3DBPP", methods=["GET", "POST"])
+def run3DBPP():
+    task_id = str(uuid.uuid4())  # 为每个任务生成唯一的ID
+    tasks[task_id] = {"status": "pending"}  # 初始化任务状态
+    
+    # 从session中提取所需的数据
+    filename = session.get('filename', None)
+    if not filename:
+        return jsonify({"error": "文件名未在会话中找到"}), 400
+
+    # 使用copy_current_request_context来确保请求上下文被正确的传递到新线程
+    @copy_current_request_context
+    def wrapper():
+        return background_task(task_id, filename)
+    
+    # 启动后台处理线程
+    thread = threading.Thread(target=wrapper)
+    thread.start()
+    
+    return jsonify({"task_id": task_id})  # 立即返回任务ID
+
+def background_task(task_id, filename):
+    try:
+        pfep = read_excel_file(filename)
+        if type(pfep) == str:
+            tasks[task_id] = {"status": "failed", "message": "文件读取失败，请重新上传，尽可能不要刷新页面或使用后退键"}
+        else:
+            AG=pack3d.Agent(stop_queue)   # stop_queue用于在agent内部控制终止
+            global_item_ID=0
+            agent_thread=pack3d.Agent_Thread(agent=AG,orders=pfep.copy(),global_item_ID=global_item_ID,data_queue=data_queue,stop_queue=stop_queue)   # 在进程内部控制终止
+            agent_thread.start()
+            agent_thread.join()  # 等待前面的thread执行完毕（如果没有这一行，代码会直接执行下去导致date_solution_dict尚未更新就保存json了）(但是如果这样写，这个函数就会执行过久，让页面一直在加载，导致504 time out)
             
-        return render_template('complete.html')
+            # 检测z=0错误
+            item_dict=pack3d.get_item_dict(agent_thread.date_solution_dict)      
+            with open(os.path.join("TempFiles",session['filename'].split(".")[0]+"solution_dict.json"), 'w', encoding='utf8') as json_file:
+                json.dump(item_dict, json_file,ensure_ascii=False)  # des_solution_dict 不能被保存为标准的json格式
+                print('*****************************整体结束**********************************')
+            tasks[task_id] = {"status": "completed"}
+    except Exception as e:
+        tasks[task_id] = {"status": "failed", "message": str(e)}
+        
+# @app.route("/run3DBPP",methods=["GET","POST"])
+# def run3DBPP():
+#     # global filename
+#     pfep=read_excel_file(session['filename'])
+#     if type(pfep)==str:
+#         return "文件读取失败，请重新上传，尽可能不要刷新页面或使用后退键"
+#     else:
+#         AG=pack3d.Agent(stop_queue)   # stop_queue用于在agent内部控制终止
+#         global_item_ID=0
+#         agent_thread=pack3d.Agent_Thread(agent=AG,orders=pfep.copy(),global_item_ID=global_item_ID,data_queue=data_queue,stop_queue=stop_queue)   # 在进程内部控制终止
+#         agent_thread.start()
+#         agent_thread.join()  # 等待前面的thread执行完毕（如果没有这一行，代码会直接执行下去导致date_solution_dict尚未更新就保存json了）(但是如果这样写，这个函数就会执行过久，让页面一直在加载，导致504 time out)
+        
+#         # 检测z=0错误
+#         item_dict=pack3d.get_item_dict(agent_thread.date_solution_dict)      
+#         with open(os.path.join("TempFiles",session['filename'].split(".")[0]+"solution_dict.json"), 'w', encoding='utf8') as json_file:
+#             json.dump(item_dict, json_file,ensure_ascii=False)  # des_solution_dict 不能被保存为标准的json格式
+#             print('*****************************整体结束**********************************')
+            
+#         return render_template('complete.html')
     
 # 路由处理中断请求
 @app.route('/interrupt', methods=['POST'])
