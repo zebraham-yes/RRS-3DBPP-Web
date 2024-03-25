@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>上传成功</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         table {
             border-collapse: collapse;
@@ -37,47 +38,52 @@
 
     
     <form action="{{ url_for('run3DBPP') }}" method="post">
-        <button type="submit">运行装箱算法</button>
+        <button type="submit" id="start_button">运行装箱算法</button>
     </form>
     
-    <div id="progress-container">
-        当前日：<dic id="task_date"></div>
-        当前仓：<div id="ori"></div>
-        当日进度：<div id="ori_percent"></div>
-        该仓进度：<div id="progress-bar">%</div>
-        <div id="progress-message"></div>
-
-    </div>
+    <div id="data_display" style="width: 1000px; height: 200px; border: 1px solid #ccc; overflow: auto; padding: 10px;"></div> <!-- 数据显示区域 -->
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $('#start_button').click(function() {
+                $.ajax({
+                    url: '/start_process',
+                    type: 'POST',
+                    success: function(response) {
+                        alert(response.message);
+                    }
+                });
+            });
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js"></script>
-    
-    <!--目前为止似乎进度条是不好用的-->
-    <script>
-        var socket = io.connect('http://' + document.domain + ':' + location.port);
-        
-        socket.on('update', function(data) {
-            var progressMessage = document.getElementById('task_date');
-            progressMessage.innerText = data.task_date;
-            var progressMessage = document.getElementById('ori');
-            progressMessage.innerText = data.ori;
-            var progressMessage = document.getElementById('ori_percent');
-            progressMessage.innerText = data.ori_percent;
-            var progressMessage = document.getElementById('progress-bar');
-            progressMessage.innerText = data.progress;
-            var progressMessage = document.getElementById('progress-message');
-            progressMessage.innerText = data.message;
+            // 定时获取最新数据
+            setInterval(function() {
+                $.ajax({
+                    url: '/get_data',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.data !== 'No data available') {
+                            $('#data_display').append(response.data + '<br>'); // 将数据附加到文本框中
+                        }
+                    }
+                });
+            }, 1000); // 每秒轮询一次
         });
     </script>
-
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js"></script>
     <button id="提前终止">Stop Computation</button>
 
     <script>
-        var socket = io.connect('http://' + document.domain + ':' + location.port);
-
-        // 监听按钮点击事件
-        document.getElementById('提前终止').addEventListener('click', function () {
-            // 通过 WebSocket 发送停止请求
-            socket.emit('stop_request');
+        $(document).ready(function(){
+            $("#提前终止").click(function(){
+                $.ajax({
+                    type: 'POST',
+                    url: '/interrupt',
+                    success: function(response) {
+                        console.log("Backend process interrupted.");
+                    }
+                });
+            });
         });
     </script>
 

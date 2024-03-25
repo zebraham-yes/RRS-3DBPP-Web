@@ -1,15 +1,20 @@
 # 在 Flask 应用中导入 secure_filename
-from flask import Flask, render_template, request, session
+from flask import Flask, render_template, request, session,jsonify
 from werkzeug.utils import send_file
 from flask_uploads import UploadSet, configure_uploads, DOCUMENTS
 from flask_socketio import SocketIO
 import json
+import time
 # from werkzeug.utils import secure_filename  # 修改这一行
 import pack3d
 import os
 
 app = Flask(__name__)
 
+from multiprocessing import Process, Queue
+data_queue = Queue()
+stop_queue = Queue()
+process = None
 
 # 修改这里，确保配置的上传目录和实际创建的目录一致
 UPLOADED_DEFUALT_DEST="uploads"
@@ -21,7 +26,6 @@ datafiles = UploadSet(name="xlsx",extensions=DOCUMENTS,default_dest=lambda x:UPL
 # 修改这里，确保使用的是正确的上传集
 configure_uploads(app, (datafiles,))
 app.secret_key = 'your_secret_key'
-socketio = SocketIO(app)
 
 @app.route("/", methods=["GET", "POST"])
 def upload_excel():
@@ -56,8 +60,8 @@ rows_per_page = 5
 
 @app.route("/table_show",methods=["GET","POST"])
 def table_show():
-    # global filename
-    # 读取 Excel 文件内容
+    global stop_queue
+    stop_queue = Queue()
     excel_data = read_excel_file(session['filename'])
     if type(excel_data)==str:
         return f"文件读取失败，请重新上传，尽可能不要刷新页面或使用后退键{session['filename']}"
@@ -73,8 +77,29 @@ def table_show():
         return render_template("table_show.html",table=table_html, page=page, total_pages=(len(excel_data) // rows_per_page) + 1)
 
 from threading import Thread, Event
-stop_event = Event()
+# stop_event = Event()
 
+# 启动进程的标志路由
+@app.route('/start_process', methods=['POST'])
+def start_process():
+    return jsonify({'message': '3DBPP already running'})
+
+# 路由用于提供最新数据的接口
+@app.route('/get_data')
+def get_data():
+    if not data_queue.empty():
+        data = data_queue.get()  # 从队列中获取数据
+        return jsonify({'data': data})
+    else:
+        return jsonify({'data': 'No data available'})
+    
+@app.route('/poll')
+def poll():
+    # 使用长轮询等待后端进程状态变化
+    while True:
+        if not stop_queue.empty():
+            return jsonify({'status': 'interrupted'})
+        time.sleep(1)
 
 @app.route("/run3DBPP",methods=["GET","POST"])
 def run3DBPP():
@@ -83,9 +108,9 @@ def run3DBPP():
     if type(pfep)==str:
         return "文件读取失败，请重新上传，尽可能不要刷新页面或使用后退键"
     else:
-        AG=pack3d.Agent()
+        AG=pack3d.Agent(stop_queue)   # stop_queue用于在agent内部控制终止
         global_item_ID=0
-        agent_thread=pack3d.Agent_Thread(agent=AG,orders=pfep.copy(),global_item_ID=global_item_ID,socket=socketio,stop_event=stop_event)
+        agent_thread=pack3d.Agent_Thread(agent=AG,orders=pfep.copy(),global_item_ID=global_item_ID,data_queue=data_queue,stop_queue=stop_queue)   # 在进程内部控制终止
         agent_thread.start()
         agent_thread.join()  # 等待前面的thread执行完毕（如果没有这一行，代码会直接执行下去导致date_solution_dict尚未更新就保存json了）
         
@@ -98,19 +123,13 @@ def run3DBPP():
             
         return render_template('complete.html')
     
+# 路由处理中断请求
+@app.route('/interrupt', methods=['POST'])
+def interrupt():
+    # 收到中断请求时，向队列中放入中断信号
+    stop_queue.put(True)
+    return jsonify({'status': 'interrupted'})
 
-
-@socketio.on('connect')
-def handle_connect():
-    print('Client connected')
-    
-@socketio.on('stop_request')
-def handle_disconnect_request():
-    # 在这里处理用户关闭页面的请求，停止计算任务
-    print("User requested disconnect")
-    # 设置 Event，通知线程停止计算任务
-    stop_event.set()
-    return "Task stopped"
 
 @app.route("/pack_report",methods=["GET","POST"])
 def pack_report():

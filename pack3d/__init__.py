@@ -15,30 +15,30 @@ trucks=read_excel("trucks.xlsx")
 easy_trucks=trucks.loc[trucks["类型"].apply(lambda x: "实际" not in x)]
 
 class Agent_Thread(Thread):
-    def __init__(self,agent,orders,global_item_ID,socket,stop_event):
+    def __init__(self,agent,orders,global_item_ID,data_queue,stop_queue):
         super(Agent_Thread, self).__init__()
-        self.stop_event = stop_event
+        self.stop_queue = stop_queue
         self.agent=agent
         self.orders=orders
         self.global_item_ID=global_item_ID
-        self.socket=socket
+        self.data_queue=data_queue
         self.date_solution_dict={}
 
     def run(self):
         dates=unique(self.orders["装车日期"])
         for date in dates:
-            if self.stop_event.is_set():  # 设定终止情形
+            if not self.stop_queue.empty():  # 设定终止情形
                 break
             self.date_solution_dict[date]={}
             print("day:", date)
             date_orders=self.orders.loc[self.orders["装车日期"]==date]
             ori_warehouse=unique(date_orders["始发仓库"])  # 当日有几个仓库要发货
-            num_of_ori=str(len(ori_warehouse))  # 一共有几个要发往的地点
+            # num_of_ori=str(len(ori_warehouse))  # 一共有几个要发往的地点
             # ori_solution_dict={}
             ori_count=0
             
             for ori in ori_warehouse:
-                if self.stop_event.is_set():  # 设定终止情形
+                if not self.stop_queue.empty():  # 设定终止情形
                     break
             
                 ori_count+=1
@@ -48,7 +48,7 @@ class Agent_Thread(Thread):
                 # get_must(bills.loc[bills["始发仓库"]==ori],date).sample(frac=1)
                 if len(must_item_table)==0:  # 没有要发的货
                     continue
-                ori_packers=self.agent.excute(must_item_table=must_item_table,global_item_ID=self.global_item_ID,socket=self.socket,date=date,ori=ori,ori_count=ori_count,num_of_ori=num_of_ori,stop_event=self.stop_event)
+                ori_packers=self.agent.excute(must_item_table=must_item_table,global_item_ID=self.global_item_ID,data_queue=self.data_queue,date=date,ori=ori)
                 self.date_solution_dict[date][ori]=ori_packers
                 print("————————%s 结束————————\n"%ori)
                 
@@ -56,12 +56,12 @@ class Agent_Thread(Thread):
             print("————————****************%s 结束****************————————\n"%date)
                 
 
-    def stop(self):
-        # 设置停止标志，线程会在下一个循环迭代中退出
-        self._stop_event = True
+    # def stop(self):
+    #     # 设置停止标志，线程会在下一个循环迭代中退出
+    #     self._stop_event = True
 
 class Agent:  # 定义智能体
-    def __init__(self) -> None:
+    def __init__(self,stop_queue) -> None:
         self.first_batch_size=70
         self.second_batch_size=5
         self.ori_packers=[]   # 临时
@@ -70,6 +70,7 @@ class Agent:  # 定义智能体
         self.unplacable_v=100000  # 初始值设为极大，如果剩余的剩余的货物中没有比这个还小的，也停止迭代装箱
         self.search_batch=5
         self.unplacable_items=[]
+        self.stop_queue=stop_queue
     
     def get_item_list(self,item_table):  # 之后这个函数当中要集成blocking的功能，让进入must_item的东西已经尽可能地成为适合装入17.5m车的block，
         # 同时，block最好又具有解散的功能，这样一旦装不进去了，又可以变回零散的item（或许可以通过构建一个继承自item的类来实现）
@@ -97,21 +98,21 @@ class Agent:  # 定义智能体
     #     return item_sep_list
 
     # 在更新后的版本当中，这个函数仅对某一日、某一城市发出的货物执行装车
-    def excute(self,must_item_table,global_item_ID,socket,date,ori,ori_count,num_of_ori,stop_event):      
+    def excute(self,must_item_table,global_item_ID,data_queue,date,ori):      
         must_items=self.get_item_list(must_item_table)  # 将pandas表格中的货物信息转化为装有很多item的列表
         must_items=blocker_items(must_items,3.5,global_item_ID)
         total_length=len(must_items)
-        print("货物总数：",total_length)
+        data_queue.put(f"货物总数：{total_length}")
 
         self.ori_packers=[]
         
-        # ——————正式装箱开始——————
+        data_queue.put(f"________________________{date}  {ori}_____________________________")
         while len(must_items)>0:
             # 开始进行初次装车
             batch,must_items=must_items[:self.first_batch_size],must_items[self.first_batch_size:]  # 从must_item中取出一个batch
             # qj_info=get_QJinfo(must_items)
             # batch,must_items,qj_info=Batch_Generator(must_items,min(self.first_batch_size,len(must_items)),qj_info)
-            if stop_event.is_set():  # 用于协助终止
+            if not self.stop_queue.empty():  # 用于协助终止
                 break
             
             batch_packer = Packer()
@@ -121,7 +122,7 @@ class Agent:  # 定义智能体
 
             batch_packer.pack()
             bin=batch_packer.bins[0]
-            print("初次装箱：放入",len(bin.items),"，未放入",len(bin.unfitted_items),end=" ")  # 只有这俩变量是靠谱的：装进去的，没装进去的
+            data_queue.put("初次装箱：放入"+str(len(bin.items))+"，未放入"+str(len(bin.unfitted_items)))  # 只有这俩变量是靠谱的：装进去的，没装进去的
             if len(bin.items)==0:  # 如果一个货物都没装进去，说明这个货物太大或者太重了，放入unplacable_items中记录一下
                 for item in bin.unfitted_items:
                     print("不可能放入的item：",item.scale,item.weight,item.item_ID)
@@ -141,8 +142,7 @@ class Agent:  # 定义智能体
             # 如果需要进行迭代装车：
             i=0
             
-            while (bin.get_filling_ratio()<self.satisfying_v_ratio) and (bin.get_weight_ratio()<self.satisfying_w_ratio) and i<length_of_must_items and i<=(self.first_batch_size*10):
-                
+            while (bin.get_filling_ratio()<self.satisfying_v_ratio) and (bin.get_weight_ratio()<self.satisfying_w_ratio) and i<length_of_must_items and i<=(self.first_batch_size*10) and self.stop_queue.empty():
                 small_item=temp_must_items[i]
                 # if (self.unplacable_v*pack3d.item.set_to_decimal(1.125,number_of_decimals=3))>small_item.v:
                 if self.unplacable_v>=small_item.v:
@@ -161,10 +161,11 @@ class Agent:  # 定义智能体
             
             V_ratio=round(batch_packer.bins[0].get_filling_ratio(),4)
             W_ratio=round(batch_packer.bins[0].get_weight_ratio(),4)
-            msg=f"迭代装箱后,   V_ratio: {V_ratio},  W_ratio: {W_ratio}"
-            print(msg,end=" ")
-            socket.emit('update', {'task_date':date,'ori_percent':str(ori_count)+"/"+num_of_ori,'ori':ori,'progress': str(round((1-len(must_items)/total_length)*100,1))+"%", 'message': msg})  # 向socket专属进度情况
-            print("装入货物总数：",len(batch_packer.bins[0].items),"剩余货物总数：",len(must_items),end="\n")
+            # msg=f"迭代装箱后,   V_ratio: {V_ratio},  W_ratio: {W_ratio}"
+            data_queue.put(f"最终装箱后   V_ratio: {V_ratio}  W_ratio: {W_ratio} 装入货物总数：{len(bin.items)} 剩余货物总数：{str(len(bin.unfitted_items))} 装箱进度: {str(round((1-len(must_items)/total_length)*100,1))}%")
+            
+            # socket.emit('update', {'task_date':date,'ori_percent':str(ori_count)+"/"+num_of_ori,'ori':ori,'progress': str(round((1-len(must_items)/total_length)*100,1))+"%", 'message': msg})  # 向socket专属进度情况
+            # print("装入货物总数：",len(batch_packer.bins[0].items),"剩余货物总数：",len(must_items),end="\n")
             self.ori_packers.append(batch_packer)
         
         # ——————正式装箱结束——————
@@ -188,8 +189,10 @@ class Agent:  # 定义智能体
         self.smaller_packer.pack()
         
         bin=self.smaller_packer.best_bin
-        print("最终装箱：放入",len(bin.items),"，未放入",len(bin.unfitted_items),end=" ")  # 只有这俩变量是靠谱的：装进去的，没装进去的
-        print("最终装箱后   V_ratio: ",round(bin.get_filling_ratio(),4)," W_ratio: ",round(bin.get_weight_ratio(),4))
+        # print("最终装箱：放入",len(bin.items),"，未放入",len(bin.unfitted_items),end=" ")  # 只有这俩变量是靠谱的：装进去的，没装进去的
+        V_ratio=round(bin.get_filling_ratio(),4)
+        W_ratio=round(bin.get_weight_ratio(),4)
+        data_queue.put(f"最终装箱后   V_ratio: {V_ratio}  W_ratio: {W_ratio} 装入货物总数：{len(bin.items)} 剩余货物总数：{str(len(bin.unfitted_items))} 装箱进度: 100%")
         # print("装入货物总数：",len(bin.items),"剩余货物总数：",len(bin.unfitted_items),end="\n")
         
         # print(self.smaller_packer.max_items_got, num_of_items)
