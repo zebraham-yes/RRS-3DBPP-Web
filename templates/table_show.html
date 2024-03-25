@@ -122,16 +122,22 @@
     </script>
     
 
-    <button id="提前终止">Stop Computation</button>
+    <button id="stopComputation">提前终止</button>
 
     <script>
         $(document).ready(function(){
-            $("#提前终止").click(function(){
+            $("#stopComputation").click(function(){
                 $.ajax({
                     type: 'POST',
                     url: '/interrupt',
                     success: function(response) {
                         console.log("Backend process interrupted.");
+                        // 添加页面跳转逻辑
+                        // window.location.href = '/pack_report';
+                    },
+                    error: function(error) {
+                        console.log("Error interrupting the backend process.");
+                        // 可以在这里处理错误情况，比如提示用户中断失败
                     }
                 });
             });

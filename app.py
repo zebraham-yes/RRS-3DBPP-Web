@@ -109,7 +109,7 @@ def get_task_status(task_id):
     else:
         return jsonify(task)
 
-@app.route("/run3DBPP", methods=["GET", "POST"])
+@app.route("/run3DBPP", methods=["GET", "POST"])  # 最好还有一个程序能防止重复开启run进程！！！
 def run3DBPP():
     task_id = str(uuid.uuid4())  # 为每个任务生成唯一的ID
     tasks[task_id] = {"status": "pending"}  # 初始化任务状态
@@ -151,26 +151,6 @@ def background_task(task_id, filename):
     except Exception as e:
         tasks[task_id] = {"status": "failed", "message": str(e)}
         
-# @app.route("/run3DBPP",methods=["GET","POST"])
-# def run3DBPP():
-#     # global filename
-#     pfep=read_excel_file(session['filename'])
-#     if type(pfep)==str:
-#         return "文件读取失败，请重新上传，尽可能不要刷新页面或使用后退键"
-#     else:
-#         AG=pack3d.Agent(stop_queue)   # stop_queue用于在agent内部控制终止
-#         global_item_ID=0
-#         agent_thread=pack3d.Agent_Thread(agent=AG,orders=pfep.copy(),global_item_ID=global_item_ID,data_queue=data_queue,stop_queue=stop_queue)   # 在进程内部控制终止
-#         agent_thread.start()
-#         agent_thread.join()  # 等待前面的thread执行完毕（如果没有这一行，代码会直接执行下去导致date_solution_dict尚未更新就保存json了）(但是如果这样写，这个函数就会执行过久，让页面一直在加载，导致504 time out)
-        
-#         # 检测z=0错误
-#         item_dict=pack3d.get_item_dict(agent_thread.date_solution_dict)      
-#         with open(os.path.join("TempFiles",session['filename'].split(".")[0]+"solution_dict.json"), 'w', encoding='utf8') as json_file:
-#             json.dump(item_dict, json_file,ensure_ascii=False)  # des_solution_dict 不能被保存为标准的json格式
-#             print('*****************************整体结束**********************************')
-            
-#         return render_template('complete.html')
     
 # 路由处理中断请求
 @app.route('/interrupt', methods=['POST'])
